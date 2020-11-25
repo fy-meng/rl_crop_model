@@ -5,7 +5,7 @@ import numpy as np
 
 class CropEnv:
     def __init__(self, num_features: int, num_actions: int, continuous: bool,
-                 transition_funcs: List[Callable], initial_state=None,
+                 max_iter: int, transition_funcs: List[Callable],  initial_state=None,
                  feature_labels: List[str] = None, action_labels: List[str] = None):
         """Initialize a crop experiment environment.
         Parameters
@@ -16,6 +16,8 @@ class CropEnv:
             Dimension of the action space.
         continuous : bool
             If the action space is continuous or not.
+        max_iter : int
+            Max number of iterations the environment will run.
         transition_funcs : list of callable
             List of transition functions. Length should equal to
             `num_features`. Each function should take in two parameters,
@@ -34,6 +36,8 @@ class CropEnv:
         self.num_features = num_features
         self.num_actions = num_actions
         self.continuous = continuous
+        self.max_iter = max_iter
+        self.iter = 0
         assert len(transition_funcs) == num_features
         self.transition_funcs = transition_funcs
 
@@ -52,11 +56,12 @@ class CropEnv:
         self.state_history = [self.initial_state]
         self.action_history = []
 
-    def restart(self):
+    def reset(self):
         """Restart the environment.
         Initialize to `self.initial_state`, or all zero if
         `self.initial_state` is `None`.
         """
+        self.iter = 0
         self.state_history = [self.initial_state]
         self.action_history = []
 
@@ -71,13 +76,20 @@ class CropEnv:
         next_state: (n,) array
             Next state after executing the action. `n` is equal to
             `num_features`.
+        reward: float
+            Reward for the action.
+        done: bool
+            `True` if the simulation is ended.
         """
+        assert self.iter + 1 < self.max_iter
+        self.iter += 1
+
         self.action_history.append(action)
         new_state = self.state_history[-1].copy()
         for i in range(self.num_features):
             new_state[i] = self.transition_funcs[i](self.state_history, self.action_history)
         self.state_history.append(new_state)
-        return new_state
+        return new_state, new_state[-1], self.iter == self.max_iter - 1
 
     def print_history(self):
         for t in range(len(self.state_history)):
@@ -99,7 +111,7 @@ class CropEnv:
             print()
 
 
-def get_toy_env() -> CropEnv:
+def get_toy_env():
     # the model is:
     # weather -> precipitation -> water -> yield
     # watering (action) -> water -> yield
@@ -107,7 +119,7 @@ def get_toy_env() -> CropEnv:
     # fertilizer -> yield
     # crop_species -> yield
     feature_labels = ['weather', 'precipitation', 'water', 'soil', 'yield']
-    action_labels = ['watering', 'fertilizer']
+    action_labels = ['irrigation', 'fertilizer']
 
     def weather_transition(state_history, _action_history, p):
         # weather is good (0) or bad (1)
@@ -128,10 +140,10 @@ def get_toy_env() -> CropEnv:
         precipitation = max(precipitation, 0)
         return precipitation
 
-    def water_transition(state_history, action_history):
-        # amount of water crop recieved is precipitation + manual watering
-        manual_watering = action_history[-1][0] if len(action_history) else 0
-        return state_history[-1][1] + manual_watering
+    def water_transition(state_history, action_history, irrigation_amount):
+        # amount of water crop received is precipitation + irrigation
+        irrigation = action_history[-1][0] if len(action_history) else False
+        return state_history[-1][1] + (irrigation_amount if irrigation else 0)
 
     def soil_transition(state_history, action_history,
                         regular_decay, fertilizer_decay):
@@ -156,13 +168,13 @@ def get_toy_env() -> CropEnv:
         # precipitation
         lambda states, actions: precipitation_transition(states, actions, 20, 10, 200, 50),
         # water
-        water_transition,
+        lambda states, actions: water_transition(states, actions, 100),
         # soil
-        lambda states, actions: soil_transition(states, actions, 0.95, 0.9),
+        lambda states, actions: soil_transition(states, actions, 1.0, 0.8),
         # yield
-        lambda states, actions: yield_transition(states, actions, 100, 20, 50)
+        lambda states, actions: yield_transition(states, actions, 100, 20, 20)
     ]
-    env = CropEnv(5, 2, False, toy_transition_funcs,
-                  initial_state=np.array([0, 0, 0, 20, 0]),
+    env = CropEnv(5, 2, False, 20, toy_transition_funcs,
+                  initial_state=np.array([0, 0, 0, 100, 0]),
                   feature_labels=feature_labels, action_labels=action_labels)
-    return env
+    return feature_labels, action_labels, env
