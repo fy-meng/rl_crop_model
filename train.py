@@ -40,7 +40,7 @@ BATCH_SIZE = 64
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 200
+EPS_DECAY = 50
 TARGET_UPDATE = 10
 
 feature_labels, action_labels, env = get_toy_env()
@@ -50,7 +50,7 @@ n_features = len(feature_labels)
 actions = [[False, False], [True, False], [False, True], [True, True]]
 n_actions = len(actions)
 
-hidden_layers = [32, 64]
+hidden_layers = [16, 32, 64]
 
 policy_net = DQN(n_features, n_actions, hidden_layers).to(device)
 target_net = DQN(n_features, n_actions, hidden_layers).to(device)
@@ -68,8 +68,7 @@ def select_action(state):
         state = state.unsqueeze(0)
     global steps_done
     sample = random.random()
-    eps = EPS_END + (EPS_START - EPS_END) * \
-          np.exp(-1. * steps_done / EPS_DECAY)
+    eps = EPS_END + (EPS_START - EPS_END) * np.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps:
         with torch.no_grad():
@@ -127,7 +126,7 @@ def optimize_model():
 
 episode_durations = []
 
-num_episodes = 100
+num_episodes = 500
 for i_episode in range(num_episodes):
     # Initialize the environment and state
     env.reset()
@@ -156,5 +155,7 @@ for i_episode in range(num_episodes):
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
+
+print(episode_durations)
 
 torch.save(policy_net.state_dict(), 'model/dqn.pth')

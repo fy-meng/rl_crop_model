@@ -5,7 +5,7 @@ import numpy as np
 
 class CropEnv:
     def __init__(self, num_features: int, num_actions: int, continuous: bool,
-                 max_iter: int, transition_funcs: List[Callable],  initial_state=None,
+                 transition_func: Callable, stop_cond: Callable, initial_state=None,
                  feature_labels: List[str] = None, action_labels: List[str] = None):
         """Initialize a crop experiment environment.
         Parameters
@@ -16,15 +16,15 @@ class CropEnv:
             Dimension of the action space.
         continuous : bool
             If the action space is continuous or not.
-        max_iter : int
-            Max number of iterations the environment will run.
-        transition_funcs : list of callable
-            List of transition functions. Length should equal to
-            `num_features`. Each function should take in two parameters,
-            `state_history` and `action_history`, where `state_history` is
-            a list of `t + 1` `np.ndarray` of shape `(num_features,)`, and
-            `action_history` is a list of `t` numbers, in which `t` is the
-            total number of steps run.
+        transition_func : callable
+            Transition functions that take in two parameters `state_history`
+            and `action_history`, and returns the next state and reward.
+            `state_history` is list of `t + 1` `np.ndarray` of shape
+            `(num_features,)`, and action_history` is a list of `t` numbers,
+            in which `t` is the total number of steps run.
+        stop_cond : callable
+            A function that takes in the current state and the iteration
+            number and return `True` if the simulation should terminate.
         initial_state : , (n,) array, or `None`, optional
             Initial state. Also used to restart the environment. `n` is
             equal to `num_features`.
@@ -36,10 +36,9 @@ class CropEnv:
         self.num_features = num_features
         self.num_actions = num_actions
         self.continuous = continuous
-        self.max_iter = max_iter
-        self.iter = 0
-        assert len(transition_funcs) == num_features
-        self.transition_funcs = transition_funcs
+        self.transition_func = transition_func
+        self.stop_cond = stop_cond
+        self.random_seed = None
 
         if initial_state is not None:
             assert np.array(initial_state).shape == (num_features,)
@@ -53,17 +52,34 @@ class CropEnv:
             assert len(action_labels) == num_actions
         self.action_labels = action_labels
 
+        self.iter = 0
         self.state_history = [self.initial_state]
         self.action_history = []
+        self.rewards = []
+        self.reset()
+
+    def set_random_seed(self, random_seed):
+        """Set the random seed. Also reset the environment.
+        Parameters
+        ----------
+        random_seed : int
+            The random seed.
+        """
+        self.random_seed = random_seed
+        self.reset()
 
     def reset(self):
         """Restart the environment.
         Initialize to `self.initial_state`, or all zero if
-        `self.initial_state` is `None`.
+        `self.initial_state` is `None`. If `self.random_seed` is not None, also
+        set the random seed to that value.
         """
         self.iter = 0
         self.state_history = [self.initial_state]
         self.action_history = []
+        self.rewards = []
+        if self.random_seed is not None:
+            np.random.seed(self.random_seed)
 
     def step(self, action: np.ndarray) -> np.ndarray:
         """Execute one step in the environment.
@@ -81,15 +97,22 @@ class CropEnv:
         done: bool
             `True` if the simulation is ended.
         """
-        assert self.iter + 1 < self.max_iter
         self.iter += 1
 
         self.action_history.append(action)
-        new_state = self.state_history[-1].copy()
-        for i in range(self.num_features):
-            new_state[i] = self.transition_funcs[i](self.state_history, self.action_history)
+        new_state, reward = self.transition_func(self.state_history, self.action_history)
         self.state_history.append(new_state)
-        return new_state, new_state[-1], self.iter == self.max_iter - 1
+        self.rewards.append(reward)
+        return new_state, reward, self.stop_cond(new_state, self.iter)
+
+    def total_return(self):
+        """Compute the return of the current run.
+        Returns
+        -------
+        _return : float
+            Sum of the rewards of the current run.
+        """
+        return sum(self.rewards)
 
     def print_history(self):
         for t in range(len(self.state_history)):
@@ -104,7 +127,7 @@ class CropEnv:
             if t < len(self.action_history):
                 if self.action_labels is not None:
                     action_str = ", ".join([f"{label}={val}" for val, label
-                                           in zip(self.action_history[t], self.action_labels)])
+                                            in zip(self.action_history[t], self.action_labels)])
                 else:
                     action_str = str(self.action_history[t])
                 print(f'action:\n\t{action_str}')
@@ -121,60 +144,68 @@ def get_toy_env():
     feature_labels = ['weather', 'precipitation', 'water', 'soil', 'yield']
     action_labels = ['irrigation', 'fertilizer']
 
-    def weather_transition(state_history, _action_history, p):
+    def transition_func(state_history, action_history):
+        WEATHER_CHANGE_PROB = 0.2
+        GOOD_WEATHER_PRECIP_MEAN = 0
+        GOOD_WEATHER_PRECIP_STD = 50
+        BAD_WEATHER_PRECIP_MEAN = 150
+        BAD_WEATHER_PRECIP_STD = 50
+        IRRIGATION_MEAN = 100
+        IRRIGATION_STD = 10
+        SOIL_DECAY = 0.95
+        FERTILIZER_DECAY = 0.8
+        BASE_YIELD_MEAN = 100
+        BASE_YIELD_STD = 20
+        DESIRED_WATER = 100
+        WATER_PENALTY = 0.02
+        FERTILIZER_BONUS = 3.5
+
+        prev_state = state_history[-1]
+        action = action_history[-1]
+
+        prev_weather, prev_soil = prev_state[0], prev_state[3]
+        irrigate, fertilize = action
+
         # weather is good (0) or bad (1)
         # weather has a chance of `1 - p` to change
-        prev_weather = state_history[-1][0]
-        return prev_weather if np.random.rand() < p else 1 - prev_weather
+        weather = 1 - prev_weather if np.random.rand() < WEATHER_CHANGE_PROB else prev_weather
 
-    def precipitation_transition(state_history, _action_history,
-                                 mean_lo, std_lo, mean_hi, std_hi):
-        # precipitation is a float
-        # if previous weather is good, return max(N(`mean_lo`, `std_lo`), 0)
+        # if previous weather is good, precipitation is max(N(`mean_lo`, `std_lo`), 0)
         # otherwise, return max(N(`mean_hi`, `std_hi`), 0)
-        prev_weather = state_history[-1][0]
         if prev_weather == 0:
-            precipitation = np.random.normal(mean_lo, std_lo)
+            precip = np.random.normal(GOOD_WEATHER_PRECIP_MEAN, GOOD_WEATHER_PRECIP_STD)
         else:
-            precipitation = np.random.normal(mean_hi, std_hi)
-        precipitation = max(precipitation, 0)
-        return precipitation
+            precip = np.random.normal(BAD_WEATHER_PRECIP_MEAN, BAD_WEATHER_PRECIP_STD)
+        precip = max(precip, 0)
 
-    def water_transition(state_history, action_history, irrigation_amount):
         # amount of water crop received is precipitation + irrigation
-        irrigation = action_history[-1][0] if len(action_history) else False
-        return state_history[-1][1] + (irrigation_amount if irrigation else 0)
+        irrigation = np.random.normal(IRRIGATION_MEAN, IRRIGATION_STD) if irrigate else 0
+        water = precip + irrigation
 
-    def soil_transition(state_history, action_history,
-                        regular_decay, fertilizer_decay):
         # soil degrade with regular_decay * fertilizer_decay
-        soil = state_history[-1][3] * regular_decay
-        if action_history[-1][1]:
-            soil *= fertilizer_decay
-        return soil
+        soil = prev_soil * SOIL_DECAY
+        if fertilize:
+            soil *= FERTILIZER_DECAY
 
-    def yield_transition(state_history, action_history, water_mean, water_std, fertilizer_bonus):
-        # yield = water_contribution + soil + fertilizer_bonus
-        # water_contribution = N(water_mean, water_std)
+        # yield = max((base_yield + water_contribution) * soil * fertilizer_bonus, 0)
+        # water_penalty = -water_penalty * (water - water_base) ** 2
         # note that water_contribution could be negative
         # fertilizer_bonus only applies if fertilized
-        return np.random.normal(water_mean, water_std) \
-               + state_history[-1][3] \
-               + fertilizer_bonus if action_history[-1][1] else 0
+        result = np.random.normal(BASE_YIELD_MEAN, BASE_YIELD_STD)
+        result -= WATER_PENALTY * ((water - DESIRED_WATER) ** 2)
+        result *= soil
+        if fertilize:
+            result *= FERTILIZER_BONUS
+        result = max(result, 0)
 
-    toy_transition_funcs = [
-        # weather
-        lambda states, actions: weather_transition(states, actions, 0.6),
-        # precipitation
-        lambda states, actions: precipitation_transition(states, actions, 20, 10, 200, 50),
-        # water
-        lambda states, actions: water_transition(states, actions, 100),
-        # soil
-        lambda states, actions: soil_transition(states, actions, 1.0, 0.8),
-        # yield
-        lambda states, actions: yield_transition(states, actions, 100, 20, 20)
-    ]
-    env = CropEnv(5, 2, False, 20, toy_transition_funcs,
-                  initial_state=np.array([0, 0, 0, 100, 0]),
+        new_state = np.array([weather, precip, water, soil, result])
+        return new_state, result
+
+    def stop_cond(state, _it):
+        # terminate if soil is < 0.1
+        return state[3] < 0.1
+
+    env = CropEnv(5, 2, False, transition_func, stop_cond,
+                  initial_state=np.array([0, 0, 0, 1., 0]),
                   feature_labels=feature_labels, action_labels=action_labels)
     return feature_labels, action_labels, env
