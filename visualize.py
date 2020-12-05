@@ -60,14 +60,40 @@ print(f'human agent:\n\tsteps = {len(env.state_history)}\n\treturn = {env.total_
 plot_state_history(env, './imgs/state_history_human.png')
 env.reset()
 
+# store history
+state_history = []
+action_history = []
+reward_history = []
+next_state_history = []
+q_values_history = []
+
 # DQN agent
 state = torch.tensor(env.state_history[0], device=device, dtype=torch.float)
 done = False
 while not done:
-    action_id = net(state).argmax()
+    q_values = net(state)
+    action_id = q_values.argmax()
     action = actions[action_id]
-    state, _, done = env.step(action)
-    state = torch.tensor(state, device=device, dtype=torch.float)
+    next_state, reward, done = env.step(action)
+
+    # store history
+    state_history.append(state)
+    action_history.append(action)
+    reward_history.append(reward)
+    next_state_history.append(next_state)
+    q_values_history.append(q_values)
+
+    state = torch.tensor(next_state, device=device, dtype=torch.float)
+
+history_dict = {
+    'state': state_history,
+    'action': action_history,
+    'reward': reward_history,
+    'next_state': next_state_history,
+    'q_values': q_values_history
+}
+np.savez('./output/history_test.npz', **history_dict)
+
 print(f'DQN agent:\n\tsteps = {len(env.state_history)}\n\treturn = {env.total_return()}')
 
 plot_state_history(env, './imgs/state_history_dqn.png')
@@ -101,9 +127,6 @@ with torch.no_grad():
             q_values_perturbed = np.array(q_values_perturbed)
             if max_q:
                 q_values_perturbed /= max_q
-
-            print(q_values)
-            print(q_values_perturbed)
 
             q_dict = {i: q for i, q in enumerate(q_values)}
             q_perturbed_dict = {i: q for i, q in enumerate(q_values_perturbed)}

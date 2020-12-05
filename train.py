@@ -63,9 +63,7 @@ buffer = ReplayBuffer(1000)
 steps_done = 0
 
 
-def select_action(state):
-    if len(state.shape) == 1:
-        state = state.unsqueeze(0)
+def select_action(q_values):
     global steps_done
     sample = random.random()
     eps = EPS_END + (EPS_START - EPS_END) * np.exp(-1. * steps_done / EPS_DECAY)
@@ -73,7 +71,7 @@ def select_action(state):
     if sample > eps:
         with torch.no_grad():
             # double DQN
-            action_id = target_net(state).max(1)[1].view(1, 1)
+            action_id = q_values.argmax()
     else:
         action_id = random.randrange(n_actions)
     return torch.tensor([[action_id]], device=device, dtype=torch.long), \
@@ -126,6 +124,14 @@ def optimize_model():
 
 episode_durations = []
 
+trial_history = []
+state_history = []
+action_history = []
+reward_history = []
+next_state_history = []
+q_values_target_history = []
+q_values_policy_history = []
+
 num_episodes = 500
 for i_episode in range(num_episodes):
     # Initialize the environment and state
@@ -133,20 +139,32 @@ for i_episode in range(num_episodes):
     state = torch.tensor(env.state_history[0], device=device, dtype=torch.float)
     state = state.unsqueeze(0)
     for t in count():
-        # Select and perform an action
-        action_id, action = select_action(state)
+        q_values_target = target_net(state)
+        q_values_policy = policy_net(state)
+
+        # select and perform an action
+        action_id, action = select_action(q_values_target)
         next_state, reward, done = env.step(action)
         next_state = torch.tensor(next_state, device=device, dtype=torch.float)
         next_state = next_state.unsqueeze(0)
         reward = torch.tensor([reward], device=device, dtype=torch.float)
 
-        # Store the transition in memory
+        # store the transition in memory
         buffer.push(state, action_id, next_state, reward)
 
-        # Move to the next state
+        # store the transition in history
+        trial_history.append(i_episode)
+        state_history.append(state.detach().numpy().squeeze())
+        action_history.append(action_id)
+        reward_history.append(reward)
+        next_state_history.append(next_state.detach().numpy().squeeze())
+        q_values_target_history.append(q_values_target.detach().numpy().squeeze())
+        q_values_policy_history.append(q_values_policy.detach().numpy().squeeze())
+
+        # move to the next state
         state = next_state
 
-        # Perform one step of the optimization (on the target network)
+        # perform one step of the optimization (on the target network)
         optimize_model()
         if done:
             episode_durations.append(t + 1)
@@ -156,6 +174,15 @@ for i_episode in range(num_episodes):
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 
-print(episode_durations)
+history_dict = {
+    'trial': trial_history,
+    'state': state_history,
+    'action': action_history,
+    'reward': reward_history,
+    'next_state': next_state_history,
+    'q_values_target': q_values_target_history,
+    'q_values_policy': q_values_policy_history,
+}
+np.savez('./output/history_train.npz', **history_dict)
 
-torch.save(policy_net.state_dict(), 'model/dqn.pth')
+torch.save(policy_net.state_dict(), 'model/dqn_.pth')
