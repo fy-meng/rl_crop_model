@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import numpy as np
 import torch
@@ -65,6 +66,8 @@ def test(num_trials, model_path):
         'next_state': next_state_history,
         'q_values': q_values_history
     }
+    if not os.path.exists('./output'):
+        os.makedirs('./output')
     np.savez('./output/history_test.npz', **history_dict)
 
 

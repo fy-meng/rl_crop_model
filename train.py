@@ -1,5 +1,6 @@
 from collections import namedtuple
 from itertools import count
+import os
 import random
 
 import numpy as np
@@ -183,6 +184,8 @@ history_dict = {
     'q_values_target': q_values_target_history,
     'q_values_policy': q_values_policy_history,
 }
+if not os.path.exists('./output'):
+    os.makedirs('./output')
 np.savez('./output/history_train.npz', **history_dict)
 
 torch.save(policy_net.state_dict(), 'model/dqn_.pth')
