@@ -17,11 +17,11 @@ class CropEnv:
         continuous : bool
             If the action space is continuous or not.
         transition_func : callable
-            Transition functions that take in two parameters `state_history`
-            and `action_history`, and returns the next state and reward.
-            `state_history` is list of `t + 1` `np.ndarray` of shape
-            `(num_features,)`, and action_history` is a list of `t` numbers,
-            in which `t` is the total number of steps run.
+            Transition functions that take in three parameters: `state_history`
+            `action_history` and `reward_history`, and returns the next state
+            and reward. `state_history` is list of `t + 1` `np.ndarray` of shape
+            `(num_features,)`, `action_history` and `reward_history` are lists
+            of `t` numbers, in which `t` is the total number of steps run.
         stop_cond : callable
             A function that takes in the current state and the iteration
             number and return `True` if the simulation should terminate.
@@ -55,7 +55,7 @@ class CropEnv:
         self.iter = 0
         self.state_history = [self.initial_state]
         self.action_history = []
-        self.rewards = []
+        self.reward_history = []
         self.reset()
 
     def set_random_seed(self, random_seed):
@@ -77,7 +77,7 @@ class CropEnv:
         self.iter = 0
         self.state_history = [self.initial_state]
         self.action_history = []
-        self.rewards = []
+        self.reward_history = []
         if self.random_seed is not None:
             np.random.seed(self.random_seed)
 
@@ -100,19 +100,21 @@ class CropEnv:
         self.iter += 1
 
         self.action_history.append(action)
-        new_state, reward = self.transition_func(self.state_history, self.action_history)
+        new_state, reward = self.transition_func(self.state_history,
+                                                 self.action_history,
+                                                 self.reward_history)
         self.state_history.append(new_state)
-        self.rewards.append(reward)
+        self.reward_history.append(reward)
         return new_state, reward, self.stop_cond(new_state, self.iter)
 
     def total_return(self):
         """Compute the return of the current run.
         Returns
         -------
-        _return : float
+        reward_sum : float
             Sum of the rewards of the current run.
         """
-        return sum(self.rewards)
+        return sum(self.reward_history)
 
     def print_history(self):
         for t in range(len(self.state_history)):
@@ -131,6 +133,7 @@ class CropEnv:
                 else:
                     action_str = str(self.action_history[t])
                 print(f'action:\n\t{action_str}')
+                print(f'reward: {self.reward_history[t]}')
             print()
 
 
@@ -141,10 +144,10 @@ def get_toy_env():
     # soil -> yield
     # fertilizer -> yield
     # crop_species -> yield
-    feature_labels = ['weather', 'precipitation', 'water', 'soil', 'yield']
+    feature_labels = ['weather', 'precipitation', 'water', 'soil']
     action_labels = ['irrigation', 'fertilizer']
 
-    def transition_func(state_history, action_history):
+    def transition_func(state_history, action_history, _reward_history):
         WEATHER_CHANGE_PROB = 0.2
         GOOD_WEATHER_PRECIP_MEAN = 0
         GOOD_WEATHER_PRECIP_STD = 50
@@ -191,21 +194,21 @@ def get_toy_env():
         # water_penalty = -water_penalty * (water - water_base) ** 2
         # note that water_contribution could be negative
         # fertilizer_bonus only applies if fertilized
-        result = np.random.normal(BASE_YIELD_MEAN, BASE_YIELD_STD)
-        result -= WATER_PENALTY * ((water - DESIRED_WATER) ** 2)
-        result *= soil
+        reward = np.random.normal(BASE_YIELD_MEAN, BASE_YIELD_STD)
+        reward -= WATER_PENALTY * ((water - DESIRED_WATER) ** 2)
+        reward *= soil
         if fertilize:
-            result *= FERTILIZER_BONUS
-        result = max(result, 0)
+            reward *= FERTILIZER_BONUS
+        reward = max(reward, 0)
 
-        new_state = np.array([weather, precip, water, soil, result])
-        return new_state, result
+        new_state = np.array([weather, precip, water, soil])
+        return new_state, reward
 
     def stop_cond(state, _it):
         # terminate if soil is < 0.1
         return state[3] < 0.1
 
-    env = CropEnv(5, 2, False, transition_func, stop_cond,
-                  initial_state=np.array([0, 0, 0, 1., 0]),
+    env = CropEnv(4, 2, False, transition_func, stop_cond,
+                  initial_state=np.array([0, 0, 0, 1.]),
                   feature_labels=feature_labels, action_labels=action_labels)
     return feature_labels, action_labels, env
