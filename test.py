@@ -36,6 +36,7 @@ def test(num_trials, model_path):
         'action': [],
         'reward': [],
         'next_state': [],
+        'done': []
         'q_values': [],
     }
 
@@ -56,6 +57,7 @@ def test(num_trials, model_path):
             history['action'].append(action)
             history['reward'].append(reward)
             history['next_state'].append(next_state)
+            history['done'].append(done)
             history['q_values'].append(q_values.detach().cpu().numpy())
 
             state = torch.tensor(next_state, device=device, dtype=torch.float)

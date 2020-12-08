@@ -132,6 +132,7 @@ history = {
     'action': [],
     'reward': [],
     'next_state': [],
+    'done': [],
     'q_values_target': [],
     'q_values_policy': [],
 }
@@ -162,6 +163,7 @@ for i_episode in range(num_episodes):
         history['action'].append(action.detach().cpu().numpy())
         history['reward'].append(reward)
         history['next_state'].append(next_state.detach().cpu().numpy().squeeze())
+        history['done'].append(done)
         history['q_values_target'].append(q_values_target.detach().cpu().numpy().squeeze())
         history['q_values_policy'].append(q_values_policy.detach().cpu().numpy().squeeze())
 
