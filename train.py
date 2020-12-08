@@ -158,12 +158,12 @@ for i_episode in range(num_episodes):
 
         # store the transition in history
         history['trial'].append(i_episode)
-        history['state'].append(state.detach().numpy().squeeze())
-        history['action'].append(action.detach().numpy())
+        history['state'].append(state.detach().cpu().numpy().squeeze())
+        history['action'].append(action.detach().cpu().numpy())
         history['reward'].append(reward)
-        history['next_state'].append(next_state.detach().numpy().squeeze())
-        history['q_values_target'].append(q_values_target.detach().numpy().squeeze())
-        history['q_values_policy'].append(q_values_policy.detach().numpy().squeeze())
+        history['next_state'].append(next_state.detach().cpu().numpy().squeeze())
+        history['q_values_target'].append(q_values_target.detach().cpu().numpy().squeeze())
+        history['q_values_policy'].append(q_values_policy.detach().cpu().numpy().squeeze())
 
         # move to the next state
         state = next_state

@@ -52,11 +52,11 @@ def test(num_trials, model_path):
 
             # store history
             history['trial'].append(i_episode)
-            history['state'].append(state.detach().numpy().squeeze())
+            history['state'].append(state.detach().cpu().numpy().squeeze())
             history['action'].append(action)
             history['reward'].append(reward)
             history['next_state'].append(next_state)
-            history['q_values'].append(q_values.detach().numpy())
+            history['q_values'].append(q_values.detach().cpu().numpy())
 
             state = torch.tensor(next_state, device=device, dtype=torch.float)
         print(f'trail {i_episode:05d}:\n\tsteps = {len(env.state_history)}\n\treturn = {env.total_return()}')
