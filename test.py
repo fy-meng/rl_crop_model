@@ -36,7 +36,7 @@ def test(num_trials, model_path):
         'action': [],
         'reward': [],
         'next_state': [],
-        'done': []
+        'done': [],
         'q_values': [],
     }
 
