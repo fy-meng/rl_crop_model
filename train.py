@@ -4,6 +4,7 @@ import os
 import random
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -125,13 +126,15 @@ def optimize_model():
 
 episode_durations = []
 
-trial_history = []
-state_history = []
-action_history = []
-reward_history = []
-next_state_history = []
-q_values_target_history = []
-q_values_policy_history = []
+history = {
+    'trial': [],
+    'state': [],
+    'action': [],
+    'reward': [],
+    'next_state': [],
+    'q_values_target': [],
+    'q_values_policy': [],
+}
 
 num_episodes = 500
 for i_episode in range(num_episodes):
@@ -154,13 +157,13 @@ for i_episode in range(num_episodes):
         buffer.push(state, action_id, next_state, reward)
 
         # store the transition in history
-        trial_history.append(i_episode)
-        state_history.append(state.detach().numpy().squeeze())
-        action_history.append(action_id)
-        reward_history.append(reward)
-        next_state_history.append(next_state.detach().numpy().squeeze())
-        q_values_target_history.append(q_values_target.detach().numpy().squeeze())
-        q_values_policy_history.append(q_values_policy.detach().numpy().squeeze())
+        history['trial'].append(i_episode)
+        history['state'].append(state.detach().numpy().squeeze())
+        history['action'].append(action.detach().numpy())
+        history['reward'].append(reward)
+        history['next_state'].append(next_state.detach().numpy().squeeze())
+        history['q_values_target'].append(q_values_target.detach().numpy().squeeze())
+        history['q_values_policy'].append(q_values_policy.detach().numpy().squeeze())
 
         # move to the next state
         state = next_state
@@ -175,17 +178,12 @@ for i_episode in range(num_episodes):
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 
-history_dict = {
-    'trial': trial_history,
-    'state': state_history,
-    'action': action_history,
-    'reward': reward_history,
-    'next_state': next_state_history,
-    'q_values_target': q_values_target_history,
-    'q_values_policy': q_values_policy_history,
-}
+for k in history.keys():
+    history[k] = np.array(history[k])
 if not os.path.exists('./output'):
     os.makedirs('./output')
-np.savez('./output/history_train.npz', **history_dict)
+pd.to_pickle(history, './output/history_train.pkl')
 
-torch.save(policy_net.state_dict(), 'model/dqn_.pth')
+if not os.path.exists('./model'):
+    os.makedirs('./model')
+torch.save(policy_net.state_dict(), './model/dqn.pth')

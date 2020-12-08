@@ -60,14 +60,7 @@ print(f'human agent:\n\tsteps = {len(env.state_history)}\n\treturn = {env.total_
 plot_state_history(env, './imgs/state_history_human.png')
 env.reset()
 
-# store history
-state_history = []
-action_history = []
-reward_history = []
-next_state_history = []
-q_values_history = []
-
-# DQN agent
+# simulate DQN agent
 state = torch.tensor(env.state_history[0], device=device, dtype=torch.float)
 done = False
 while not done:
@@ -76,23 +69,7 @@ while not done:
     action = actions[action_id]
     next_state, reward, done = env.step(action)
 
-    # store history
-    state_history.append(state)
-    action_history.append(action)
-    reward_history.append(reward)
-    next_state_history.append(next_state)
-    q_values_history.append(q_values)
-
     state = torch.tensor(next_state, device=device, dtype=torch.float)
-
-history_dict = {
-    'state': state_history,
-    'action': action_history,
-    'reward': reward_history,
-    'next_state': next_state_history,
-    'q_values': q_values_history
-}
-np.savez('./output/history_test.npz', **history_dict)
 
 print(f'DQN agent:\n\tsteps = {len(env.state_history)}\n\treturn = {env.total_return()}')
 

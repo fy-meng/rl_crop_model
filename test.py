@@ -2,6 +2,7 @@ import argparse
 import os
 
 import numpy as np
+import pandas as pd
 import torch
 
 from crop_model import CropEnv, get_toy_env
@@ -29,15 +30,17 @@ def test(num_trials, model_path):
     actions = [[False, False], [True, False], [False, True], [True, True]]
 
     # store history
-    trial_history = []
-    state_history = []
-    action_history = []
-    reward_history = []
-    next_state_history = []
-    q_values_history = []
+    history = {
+        'trial': [],
+        'state': [],
+        'action': [],
+        'reward': [],
+        'next_state': [],
+        'q_values': [],
+    }
 
     # DQN agent
-    for i in range(num_trials):
+    for i_episode in range(num_trials):
         env.reset()
         state = torch.tensor(env.state_history[0], device=device, dtype=torch.float)
         done = False
@@ -48,27 +51,21 @@ def test(num_trials, model_path):
             next_state, reward, done = env.step(action)
 
             # store history
-            trial_history.append(i)
-            state_history.append(state.detach().numpy())
-            action_history.append(action)
-            reward_history.append(reward)
-            next_state_history.append(next_state)
-            q_values_history.append(q_values.detach().numpy())
+            history['trial'].append(i_episode)
+            history['state'].append(state.detach().numpy().squeeze())
+            history['action'].append(action)
+            history['reward'].append(reward)
+            history['next_state'].append(next_state)
+            history['q_values'].append(q_values.detach().numpy())
 
             state = torch.tensor(next_state, device=device, dtype=torch.float)
-        print(f'trail {i:05d}:\n\tsteps = {len(env.state_history)}\n\treturn = {env.total_return()}')
+        print(f'trail {i_episode:05d}:\n\tsteps = {len(env.state_history)}\n\treturn = {env.total_return()}')
 
-    history_dict = {
-        'trial': trial_history,
-        'state': state_history,
-        'action': action_history,
-        'reward': reward_history,
-        'next_state': next_state_history,
-        'q_values': q_values_history
-    }
+    for k in history.keys():
+        history[k] = np.array(history[k])
     if not os.path.exists('./output'):
         os.makedirs('./output')
-    np.savez('./output/history_test.npz', **history_dict)
+    pd.to_pickle(history, './output/history_test.pkl')
 
 
 if __name__ == '__main__':
